@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import type { FormEvent } from "react";
-import Link from "next/link";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { AuthShell, Field } from "@/app/AuthShell";
-import { login } from "@/app/api";
-import Login from "./login/page";
 
 export default function Page() {
-  
-  return <Login />
+  const router = useRouter();
+
+  useEffect(() => {
+    const isLogin = localStorage.getItem("login");
+    console.log("isLogin", isLogin)
+    if (isLogin) router.replace("/quest");
+    else router.replace("/login");
+  }, [])
+
+  return <></>;
 
 }

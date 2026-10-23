@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ChangeEvent, KeyboardEvent, PointerEvent } from "react";
+import { useRouter } from "next/navigation";
 
 /* ------------------------------------------------------------------ */
 /*  Data                                                               */
@@ -149,6 +157,11 @@ interface Drag {
   target: string | null;
   moved: boolean;
 }
+interface LoginData {
+  username?: string;
+  session?: string;
+  loginDate?: string;
+}
 type Ring = number[][];
 type Polygon = Ring[];
 type Grouped = Map<string, Polygon[]>;
@@ -193,6 +206,35 @@ const MAP_URL =
   "https://gist.githubusercontent.com/jeepkd/" +
   "4e31e6a10f8297b9de50c62856927ecf/raw/thailand.json";
 const FULL_VIEW: View = { x: 0, y: 0, w: 760, h: 1150 };
+
+/* ------------------------------------------------------------------ */
+/*  Login storage (external store for useSyncExternalStore)            */
+/* ------------------------------------------------------------------ */
+const LOGIN_KEY = "login";
+const LOGIN_EVENT = "login-change";
+
+function subscribeLogin(callback: () => void) {
+  window.addEventListener("storage", callback); // changes from other tabs
+  window.addEventListener(LOGIN_EVENT, callback); // changes from this tab
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(LOGIN_EVENT, callback);
+  };
+}
+
+// Return the raw string (a primitive) so the snapshot is stable between renders
+function getLoginSnapshot(): string | null {
+  try {
+    return localStorage.getItem(LOGIN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+// Used on the server and during hydration, so there is no mismatch
+function getLoginServerSnapshot(): string | null {
+  return null;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Geo helpers                                                        */
@@ -487,6 +529,8 @@ for (let lat = 6; lat <= 20; lat += 2) GRID_LAT.push({ lat, y: project(97, lat)[
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 export default function ThailandMapQuest() {
+  const router = useRouter();
+
   const [phase, setPhase] = useState("home"); // home | play | result
   const [round, setRound] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Answer[]>([]);
@@ -520,6 +564,27 @@ export default function ThailandMapQuest() {
 
   const total = sumScore(answers);
   const exact = answers.filter((a) => a.correct).length;
+
+  /* ---------- login (read from localStorage without setState in effect) ---------- */
+  const rawLogin = useSyncExternalStore(
+    subscribeLogin,
+    getLoginSnapshot,
+    getLoginServerSnapshot
+  );
+
+  const loginData = useMemo<LoginData>(() => {
+    try {
+      return rawLogin ? (JSON.parse(rawLogin) as LoginData) : {};
+    } catch {
+      return {};
+    }
+  }, [rawLogin]);
+
+  // Route guard: redirect (no setState). Read storage directly because
+  // rawLogin is null during the hydration render.
+  useEffect(() => {
+    if (!localStorage.getItem(LOGIN_KEY)) router.replace("/login");
+  }, [router]);
 
   /* ---------- geo loading ---------- */
   const installGeo = useCallback((grouped: Grouped) => {
@@ -912,7 +977,10 @@ export default function ThailandMapQuest() {
       <main className="wrap">
         <header>
           <div className="brand">THAILAND <span>MAP QUEST</span></div>
-          <div className="badge">77 พื้นที่ · 100 คำถาม</div>
+          <div className="right-zone">
+            <div className="badge">77 พื้นที่ · 100 คำถาม</div>
+            {loginData.username && <div className="badge">{loginData.username}</div>}
+          </div>
         </header>
 
         {phase === "home" && (
@@ -1196,6 +1264,7 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;ma
 .brand{font-size:20px;font-weight:900;letter-spacing:-.7px}
 .brand span{color:var(--mint)}
 .badge{padding:5px 11px;border:1px solid var(--line);border-radius:30px;color:var(--muted);font-size:12px}
+.right-zone{display:flex;gap:6px;}
 .panel{background:linear-gradient(145deg,#19253b,#111a2d);border:1px solid var(--line);border-radius:22px;padding:24px}
 .hero{max-width:800px;margin:30px auto;padding:clamp(22px,5vw,44px)}
 h1,h2,h3,p{margin-top:0}
