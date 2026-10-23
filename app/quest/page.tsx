@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { ChangeEvent, KeyboardEvent, PointerEvent } from "react";
 import { useRouter } from "next/navigation";
+import { logout } from "@/app/api";
 
 /* ------------------------------------------------------------------ */
 /*  Data                                                               */
@@ -586,6 +587,29 @@ export default function ThailandMapQuest() {
     if (!localStorage.getItem(LOGIN_KEY)) router.replace("/login");
   }, [router]);
 
+  /* ---------- user menu handlers ---------- */
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleProfile = () => router.push("/profile");
+  const handleSettings = () => router.push("/settings");
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      // Stamp logout_at on the server (closes the session in the DB)
+      if (loginData.session) await logout(loginData.session);
+    } catch {
+      // Even if the server call fails, still sign out locally.
+      // The server-side timeout will close the orphaned session.
+    } finally {
+      try { localStorage.removeItem(LOGIN_KEY); } catch { /* ignore */ }
+      window.dispatchEvent(new Event(LOGIN_EVENT)); // updates the badge
+      router.replace("/login");
+      setLoggingOut(false); // the page instance can be kept alive by Next's router cache
+    }
+  }
+
   /* ---------- geo loading ---------- */
   const installGeo = useCallback((grouped: Grouped) => {
     setGeo(grouped);
@@ -799,6 +823,8 @@ export default function ThailandMapQuest() {
     } else {
       setCurrent(current + 1);
     }
+    
+    //1. api save 
   }
 
   function showAnswerMap(answer: Answer, index: number) {
@@ -979,7 +1005,15 @@ export default function ThailandMapQuest() {
           <div className="brand">THAILAND <span>MAP QUEST</span></div>
           <div className="right-zone">
             <div className="badge">77 พื้นที่ · 100 คำถาม</div>
-            {loginData.username && <div className="badge">{loginData.username}</div>}
+            {loginData.username && (
+              <UserMenu
+                username={loginData.username}
+                busy={loggingOut}
+                onProfile={handleProfile}
+                onSettings={handleSettings}
+                onLogout={handleLogout}
+              />
+            )}
           </div>
         </header>
 
@@ -1215,6 +1249,85 @@ export default function ThailandMapQuest() {
   );
 }
 
+function UserMenu({
+  username,
+  busy,
+  onProfile,
+  onSettings,
+  onLogout,
+}: {
+  username: string;
+  busy: boolean;
+  onProfile: () => void;
+  onSettings: () => void;
+  onLogout: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside tap/click and on Escape (needed for touch devices)
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: Event) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: Event) => {
+      if ((e as globalThis.KeyboardEvent).key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const run = (action: () => void) => () => {
+    setOpen(false);
+    action();
+  };
+
+  return (
+    <div
+      className="userMenu"
+      ref={rootRef}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        className="badge userTrigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {username} <span aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="menuWrap">
+          <div className="menu" role="menu" aria-label="เมนูผู้ใช้">
+            <button type="button" role="menuitem" onClick={run(onProfile)}>โปรไฟล์</button>
+            <button type="button" role="menuitem" onClick={run(onSettings)}>ตั้งค่า</button>
+            <hr />
+            <button
+              type="button"
+              role="menuitem"
+              className="danger"
+              disabled={busy}
+              onClick={run(onLogout)}
+            >
+              {busy ? "กำลังออกจากระบบ…" : "ออกจากระบบ"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReviewCell({
   label,
   value,
@@ -1265,6 +1378,15 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;ma
 .brand span{color:var(--mint)}
 .badge{padding:5px 11px;border:1px solid var(--line);border-radius:30px;color:var(--muted);font-size:12px}
 .right-zone{display:flex;gap:6px;}
+.userMenu{position:relative}
+.userTrigger{background:transparent;font-weight:400;cursor:pointer}
+.userTrigger:hover:not(:disabled){background:#ffffff0d;filter:none}
+.menuWrap{position:absolute;right:0;top:100%;padding-top:6px;z-index:20}
+.menu{min-width:160px;padding:6px;background:#141e33;border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px #0008;display:flex;flex-direction:column}
+.menu button{background:transparent;text-align:left;font-weight:500;font-size:14px;padding:9px 12px;border-radius:9px}
+.menu button:hover:not(:disabled){background:#ffffff12;filter:none}
+.menu .danger{color:var(--red)}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
 .panel{background:linear-gradient(145deg,#19253b,#111a2d);border:1px solid var(--line);border-radius:22px;padding:24px}
 .hero{max-width:800px;margin:30px auto;padding:clamp(22px,5vw,44px)}
 h1,h2,h3,p{margin-top:0}

@@ -14,7 +14,6 @@ export default function Login() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   //const user = useSelector((state: RootState) => {state.auth.username, state.auth.password});
-  const [isLogin, setIsLogin] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
